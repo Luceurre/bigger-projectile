@@ -3,6 +3,15 @@
 ## Summary
 
 An extension for the famous emacs project manager Projectile. 
+Create layouts, run, debug and tests configurations for your projects.
+
+## Features
+
+* [ ] Project layout
+* [ ] Multiple run/compile/test configurations
+* [ ] Automatic project detection
+* [ ] Default project configurations
+* [ ] Template for common projects with ~skeletor~
 
 ## Installing
 
