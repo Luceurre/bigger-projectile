@@ -23,7 +23,7 @@
 ;;; Commentary:
 
 ;; An extension for the famous Emacs project manager Projectile.
-;; Depends on skeletor and projectile.
+;; Depends on skeletor, projectile, ido and workspaces.
 
 ;;; Code:
 
@@ -80,21 +80,43 @@
 (defvar bigger-projectile-current-project-root (projectile-project-p)
   "Current project root.")
 
+(defvar bigger-projectile-next-project-configuration-id 0
+  "Next project configuration id.")
+
 (defvar bigger-projectile-default-configuration-id ()
   "What should be the default configuration on project load."
   )
 
 (defun bigger-projectile-get-next-config-id ()
   "Return next available config id."
-  1)
+  (setq bigger-projectile-next-project-configuration-id (+ 1 bigger-projectile-next-project-configuration-id))
+  (- bigger-projectile-next-project-configuration-id 1)
+  )
+
+(defun bigger-projectile-save-workspace ()
+  "Save current workspace."
+  (interactive)
+  (when (projectile-project-p)
+    (+workspace:save (concat "" (projectile-project-name)))
+    )
+  )
+
+(defun bigger-projectile-load-workspace ()
+  "Load saved workspace if it exists."
+  (interactive)
+  (when (projectile-project-p)
+    (+workspace-delete (projectile-project-name) t)
+    (+workspace:load (concat "" (projectile-project-name)))
+    )
+  )
 
 (cl-defstruct
     bigger-projectile-project-config
   name id)
 
-(defun bigger-projectile-make-new-project-config (name default)
+(defun bigger-projectile-make-new-project-config (name)
   "Create a new project configuration with given options NAME and DEFAULT and return it."
-  (make-bigger-projectile-project-config :name name :id (bigger-projectile-get-next-config-id) :default default)
+  (make-bigger-projectile-project-config :name name :id (bigger-projectile-get-next-config-id))
   )
 (defun bigger-projectile-generate-default-config ()
   "Generate default configuration for current project based on project type."
@@ -102,25 +124,12 @@
 
 (defun bigger-projectile-save-config (filename)
   "Save project configurations in FILENAME."
-  (bigger-projectile-dump-vars-to-file '(bigger-projectile-current-project-configurations bigger-projectile-current-project-active-configuration-id) filename)
+  (bigger-projectile-dump-vars-to-file '(bigger-projectile-current-project-configurations bigger-projectile-current-project-active-configuration-id bigger-projectile-next-project-configuration-id) filename)
   )
 
 (defun bigger-projectile-load-config (filename)
   "Load configurations stored in FILENAME."
   (bigger-projectile-read-file filename)
-  )
-
-(defun bigger-projectile--get-default-configuration ()
-  "Return current project default configuration."
-  (let ((result))
-    (dolist (config bigger-projectile-current-project-configurations result)
-      (when (bigger-projectile-project-config-default config)
-        (setq result config)
-        )
-
-      )
-    result
-    )
   )
 
 (defun bigger-projectile--set-active-configuration (config)
@@ -140,7 +149,6 @@
         (bigger-projectile-save-config config-file)
         )
       )
-    (bigger-projectile--set-active-configuration (bigger-projectile--get-default-configuration))
     )
   )
 
@@ -162,12 +170,12 @@
     )
   )
 
-(defun bigger-projectile--create-new-configuration (name default)
+(defun bigger-projectile--create-new-configuration (name)
   "Should not be called directly, create a new configuration with NAME.  Set it as default if DEFAULT."
   (interactive
    (list (read-string "Configuration name: "))
    )
-  (setq bigger-projectile-current-project-configurations (push (bigger-projectile-make-new-project-config name default) bigger-projectile-current-project-configurations))
+  (setq bigger-projectile-current-project-configurations (push (bigger-projectile-make-new-project-config name) bigger-projectile-current-project-configurations))
   (when (or bigger-projectile-make-new-configuration-active (not bigger-projectile-current-project-active-configuration))
     (setq bigger-projectile-current-project-active-configuration-id (bigger-projectile-project-config-id (car bigger-projectile-current-project-configurations)))
     )
@@ -200,29 +208,64 @@
     )
   )
 
-  (defun bigger-projectile--save-configurations ()
-    "Save configuration without any check."
-    (bigger-projectile-save-config (concat (projectile-project-p) (concat bigger-projectile-project-config-dir bigger-projectile-project-config-file)))
-    )
+(defun bigger-projectile--save-configurations ()
+  "Save configuration without any check."
+  (bigger-projectile-save-config (concat (projectile-project-p) (concat bigger-projectile-project-config-dir bigger-projectile-project-config-file)))
+  )
 
-  (defun bigger-projectile--set-active-configuration-name (new-name)
-    "Change active configuration name with NEW-NAME."
-    (interactive "sNew name: ")
-    (let ((config-pos (bigger-projectile--get-configuration-position-from-id bigger-projectile-current-project-active-configuration-id)))
-      (setf (bigger-projectile-project-config-name (nth config-pos bigger-projectile-current-project-configurations)) new-name)
-      (bigger-projectile--save-configurations)
+(defun bigger-projectile--set-active-configuration-name (new-name)
+  "Change active configuration name with NEW-NAME."
+  (interactive "sNew name: ")
+  (let ((config-pos (bigger-projectile--get-configuration-position-from-id bigger-projectile-current-project-active-configuration-id)))
+    (setf (bigger-projectile-project-config-name (nth config-pos bigger-projectile-current-project-configurations)) new-name)
+    (bigger-projectile--save-configurations)
+    )
+  )
+
+(defun bigger-projectile-set-active-configuration-name ()
+  "Change active configuration name."
+  (interactive)
+  (let ((project-root (bigger-projectile-project-p)))
+    (when project-root
+      (call-interactively 'bigger-projectile--set-active-configuration-name)
       )
     )
+  )
 
-  (defun bigger-projectile-set-active-configuration-name ()
-    "Change active configuration name."
-    (interactive)
-    (let ((project-root (bigger-projectile-project-p)))
-      (when project-root
-        (call-interactively 'bigger-projectile--set-active-configuration-name)
+(defun bigger-projectile--get-configurations ()
+  "Return a list of list with (config-name position)."
+  (let ((result-list) (i 0) (configs bigger-projectile-current-project-configurations))
+    (while configs
+      (let ((config (car configs)))
+        (push (list (bigger-projectile-project-config-name config) i) result-list)
         )
+      (setq configs (cdr configs))
+      (setq i (+ 1 i))
+      )
+    result-list
+    )
+  )
+
+(defun bigger-projectile-ask-for-configuration ()
+  "Ask the user to select a configuration and return the configuration position."
+  (when (projectile-project-p)
+    (let* ((values-alist (bigger-projectile--get-configurations)) (result (ido-completing-read "Select config: " values-alist nil t)))
+      (car (last (assoc result values-alist)))
       )
     )
-  (provide 'bigger-projectile)
+  )
+
+(defun bigger-projectile-set-active-config ()
+  "Set the active configuration."
+  (interactive)
+  (let ((config-pos (bigger-projectile-ask-for-configuration)))
+    (setq bigger-projectile-current-project-active-configuration-id (bigger-projectile-project-config-id (nth config-pos bigger-projectile-current-project-configurations)))
+    )
+  )
+
+(provide 'bigger-projectile)
+
+;; TODO add hooks with projectile
+;; TODO add run
 
 ;;; bigger-projectile.el ends here

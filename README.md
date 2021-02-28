@@ -7,11 +7,18 @@ Create layouts, run, debug and tests configurations for your projects.
 
 ## Features
 
-* [ ] Project layout
+* [x] Project layout with ~workspaces~
 * [ ] Multiple run/compile/test configurations
 * [ ] Automatic project detection
 * [ ] Default project configurations
 * [ ] Template for common projects with ~skeletor~
+
+## Requirements
+
+* ido
+* Projectile
+* workspaces
+* skeletor
 
 ## Installing
 
